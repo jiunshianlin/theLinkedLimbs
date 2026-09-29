@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>剛剛 Campus Pulse</title>
+<meta name="theme-color" content="#1f6f5c">
+<style>
+:root{--bg:#f6f4ef;--card:#fff;--ink:#1d2320;--mute:#6b736f;--line:#e4e0d6;--brand:#1f6f5c;--ok:#2e8b57;--warn:#c98a12;--bad:#c0392b;--chip:#ece8de}
+@media (prefers-color-scheme:dark){:root{--bg:#141816;--card:#1d2320;--ink:#eef1ee;--mute:#9aa39e;--line:#2c3430;--brand:#4fb393;--chip:#27302c}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 -apple-system,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif;padding-bottom:84px}
+header{position:sticky;top:0;background:var(--bg);padding:14px 16px 8px;z-index:5;border-bottom:1px solid var(--line)}
+h1{margin:0;font-size:20px}h1 small{font-size:12px;color:var(--mute);font-weight:400;margin-left:6px}
+main{max-width:640px;margin:0 auto;padding:12px 16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.chip{background:var(--chip);border:none;border-radius:999px;padding:5px 11px;font-size:13px;color:var(--ink);cursor:pointer}
+.chip.on{background:var(--brand);color:#fff}
+.meta{font-size:12px;color:var(--mute)}
+.bar{height:8px;border-radius:4px;background:var(--chip);overflow:hidden;flex:1;min-width:80px}
+.bar>i{display:block;height:100%}
+button.act{border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:8px;padding:4px 10px;font-size:13px;cursor:pointer}
+button.primary{background:var(--brand);color:#fff;border:none;border-radius:10px;padding:10px 16px;font-size:15px;cursor:pointer;width:100%}
+input,textarea,select{width:100%;font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);margin:4px 0 10px}
+textarea{min-height:70px}
+label{font-size:13px;color:var(--mute)}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;border:none;background:none;padding:10px 0;font-size:12px;color:var(--mute);cursor:pointer}
+nav button b{display:block;font-size:20px}
+nav button.on{color:var(--brand);font-weight:600}
+.verdict{font-size:22px;font-weight:700;margin:4px 0}
+.pill{font-size:11px;padding:2px 8px;border-radius:999px;color:#fff}
+.stale{opacity:.55}
+.hint{font-size:13px;color:var(--mute);background:var(--chip);border-radius:10px;padding:10px;margin-bottom:12px}
+.empty{text-align:center;color:var(--mute);padding:30px 0}
+</style>
+</head>
+<body>
+<header><h1>剛剛 <small>把同學腦中「剛發生的經驗」變成你可以相信的答案</small></h1></header>
+<main id="view"></main>
+<nav>
+  <button data-tab="check"><b>🧭</b>這樣對嗎？</button>
+  <button data-tab="feed"><b>📡</b>剛剛</button>
+  <button data-tab="post"><b>➕</b>回報</button>
+  <button data-tab="ask"><b>🙋</b>問在場的人</button>
+  <button data-tab="decide"><b>📓</b>決定紀錄</button>
+</nav>
+<script>
+/* ---------- 資料模型 ----------
+   每一則「回報」= 一個人當作感測器剛剛感測到的情境經驗。
+   可信度 = 新鮮度(依類別半衰期) × 群眾驗證(確認/過期票) × 來源接近度(親身/聽說)。 */
+const CATS={
+  course:{n:'選課/上課',e:'📚',half:24*14},   // 小時
+  hw:{n:'作業/考試',e:'📝',half:24*3},
+  transit:{n:'交通',e:'🚌',half:1},
+  housing:{n:'住宿',e:'🏠',half:24*30},
+  food:{n:'吃飯/生活',e:'🍜',half:24*2},
+  team:{n:'找組員',e:'🤝',half:24*2}
+};
+const SRC={first:{n:'親身經驗',w:1},friend:{n:'朋友說的',w:.7},heard:{n:'聽說/網路',w:.45}};
+const H=3600e3,now=()=>Date.now();
+const K='campuspulse.v1';
+const load=()=>{try{return JSON.parse(localStorage.getItem(K))}catch(e){return null}};
+const save=()=>{try{localStorage.setItem(K,JSON.stringify(S))}catch(e){}};
+const seed=()=>{const t=now();return{me:'我',reports:[
+ {id:1,cat:'transit',tags:['校車','後門'],text:'後門校車 8:10 那班今天有準時到，人很多要早點排',src:'first',at:t-.3*H,ok:3,no:0},
+ {id:2,cat:'transit',tags:['公車','265'],text:'265 因為施工改道，不停圖書館站，要在前一站下',src:'first',at:t-5*H,ok:1,no:2},
+ {id:3,cat:'course',tags:['統計學','王老師','選課'],text:'剛上完第一堂統計學：點名每週都點，期中佔 40%，加簽要寫 email 給助教',src:'first',at:t-20*H,ok:6,no:0},
+ {id:4,cat:'course',tags:['通識','加簽'],text:'聽說通識加簽截止是這週五',src:'heard',at:t-50*H,ok:1,no:1},
+ {id:5,cat:'housing',tags:['套房','水源街'],text:'剛搬進水源街那棟，冷氣是分離式、電費每度 5 元，房東回訊息很快',src:'first',at:t-72*H,ok:2,no:0},
+ {id:6,cat:'food',tags:['學餐','二餐'],text:'二餐今天中午排隊超過 20 分鐘，建議 12:30 後再去',src:'first',at:t-1*H,ok:4,no:0},
+ {id:7,cat:'team',tags:['行銷學','分組'],text:'行銷學週三班還缺 1 位組員，會做簡報尤佳',src:'first',at:t-3*H,ok:0,no:0},
+ {id:8,cat:'hw',tags:['微積分','作業'],text:'微積分作業三第 5 題題目有誤，助教說改成 x>0',src:'friend',at:t-10*H,ok:5,no:0}
+],asks:[
+ {id:1,cat:'transit',text:'現在有人在捷運站嗎？往學校的接駁車還有在跑嗎？',at:t-.2*H,answers:[]}
+],decisions:[],nid:100}};
+let S=load()||seed();
+let tab='check',filter='all';
+
+/* ---------- 可信度計算 ---------- */
+function fresh(r){const age=(now()-r.at)/H;return Math.pow(.5,age/CATS[r.cat].half)}
+function crowd(r){return (r.ok+1)/(r.ok+r.no+2)} // Beta(1,1) 平滑
+function trust(r){return fresh(r)*crowd(r)*SRC[r.src].w}
+function color(v){return v>.6?'var(--ok)':v>.35?'var(--warn)':'var(--bad)'}
+function ago(ts){const m=Math.round((now()-ts)/6e4);if(m<1)return'剛剛';if(m<60)return m+' 分鐘前';const h=Math.round(m/60);if(h<48)return h+' 小時前';return Math.round(h/24)+' 天前'}
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function words(q){return q.toLowerCase().split(/[\s,，。？?！!、]+/).filter(Boolean)}
+function score(r,q){const hay=(r.text+' '+r.tags.join(' ')+' '+CATS[r.cat].n).toLowerCase();
+  let s=0;for(const w of words(q)){if(hay.includes(w))s+=2;else for(const ch of w)if(ch.length&&/[一-鿿]/.test(ch)&&hay.includes(ch))s+=.2}return s}
+
+function reportCard(r){const t=trust(r),f=fresh(r),c=CATS[r.cat];
+ return `<div class="card ${f<.25?'stale':''}">
+  <div class="row"><span>${c.e} <b>${c.n}</b></span><span class="meta">${ago(r.at)} · ${SRC[r.src].n}</span>
+  ${f<.25?'<span class="pill" style="background:var(--bad)">可能已過期</span>':''}</div>
+  <div style="margin:6px 0">${esc(r.text)}</div>
+  <div class="meta">${r.tags.map(t=>'#'+esc(t)).join(' ')}</div>
+  <div class="row" style="margin-top:8px"><span class="meta">可信度</span><div class="bar"><i style="width:${t*100}%;background:${color(t)}"></i></div><span class="meta">${Math.round(t*100)}</span></div>
+  <div class="meta">新鮮度 ${Math.round(f*100)}% · ${r.ok} 人確認 · ${r.no} 人說已變了</div>
+  <div class="row" style="margin-top:8px">
+   <button class="act" onclick="vote(${r.id},'ok')">👍 我剛剛也是這樣</button>
+   <button class="act" onclick="vote(${r.id},'no')">⚠️ 已經不是這樣了</button>
+  </div></div>`}
+function vote(id,k){const r=S.reports.find(x=>x.id===id);r[k]++;save();render()}
+
+/* ---------- 頁面 ---------- */
+const V={
+check(){return `<div class="hint">真正讓人焦慮的不是「不知道答案」，而是「不知道手上的答案能不能信」。把你現在以為的答案打進來，看看同學們剛剛的經驗怎麼說。</div>
+ <div class="card"><label>我現在的理解 / 打算這樣做…</label>
+ <textarea id="q" placeholder="例：統計學加簽是寫 email 給助教？／現在搭 265 可以到圖書館？">${esc(V._q||'')}</textarea>
+ <button class="primary" onclick="V._q=document.getElementById('q').value;render()">幫我確認</button></div>
+ ${V._q?verdict(V._q):''}`},
+feed(){const list=S.reports.filter(r=>filter==='all'||r.cat===filter).sort((a,b)=>b.at-a.at);
+ return `<div class="row" style="margin-bottom:10px"><button class="chip ${filter==='all'?'on':''}" onclick="filter='all';render()">全部</button>
+ ${Object.entries(CATS).map(([k,c])=>`<button class="chip ${filter===k?'on':''}" onclick="filter='${k}';render()">${c.e} ${c.n}</button>`).join('')}</div>
+ ${list.map(reportCard).join('')||'<div class="empty">這類還沒有人回報</div>'}`},
+post(){return `<div class="hint">你就是感測器。剛上完課、剛搭完車、剛搬進去、剛吃完——花 10 秒留下來，下一個人就少私訊三個人。</div>
+ <div class="card"><label>類別</label><select id="pc">${Object.entries(CATS).map(([k,c])=>`<option value="${k}">${c.e} ${c.n}（約 ${c.half<24?c.half+' 小時':Math.round(c.half/24)+' 天'}後變舊）</option>`).join('')}</select>
+ <label>剛剛發生了什麼？</label><textarea id="pt" placeholder="具體一點：哪堂課/哪班車/哪棟房、什麼狀況"></textarea>
+ <label>標籤（空白分隔）</label><input id="pg" placeholder="統計學 王老師">
+ <label>資訊來源</label><select id="ps">${Object.entries(SRC).map(([k,s])=>`<option value="${k}">${s.n}</option>`).join('')}</select>
+ <button class="primary" onclick="addReport()">送出回報</button></div>`},
+ask(){const open=S.asks.slice().sort((a,b)=>b.at-a.at);
+ return `<div class="hint">找不到可靠答案？不用想「誰可能知道」再一個個私訊——直接問此刻在場、剛經歷過的人。</div>
+ <div class="card"><label>類別</label><select id="ac">${Object.entries(CATS).map(([k,c])=>`<option value="${k}">${c.e} ${c.n}</option>`).join('')}</select>
+ <textarea id="at" placeholder="例：有人剛上完週二的會計學嗎？期中範圍到哪？"></textarea>
+ <button class="primary" onclick="addAsk()">發問給在場的人</button></div>
+ ${open.map(a=>`<div class="card"><div class="row"><span>${CATS[a.cat].e}</span><b style="flex:1">${esc(a.text)}</b></div>
+  <div class="meta">${ago(a.at)} · ${a.answers.length} 個回答</div>
+  ${a.answers.map(x=>`<div style="border-left:3px solid var(--brand);padding-left:8px;margin:8px 0">${esc(x.text)}<div class="meta">${ago(x.at)} · ${SRC[x.src].n}</div></div>`).join('')}
+  <div class="row"><input id="ans${a.id}" placeholder="我剛好知道…" style="flex:1;margin:6px 0">
+  <select id="anss${a.id}" style="width:auto;margin:6px 0">${Object.entries(SRC).map(([k,s])=>`<option value="${k}">${s.n}</option>`).join('')}</select>
+  <button class="act" onclick="answer(${a.id})">回答</button></div>
+  <div class="meta">回答會同時變成一則「剛剛」回報，讓之後的人也查得到。</div></div>`).join('')}`},
+decide(){return `<div class="hint">後悔常來自「當時不知道自己依據什麼決定」。記下依據，之後回顧：資訊可靠嗎？會不會再這樣選？</div>
+ <div class="card"><label>我決定…</label><input id="dt" placeholder="例：退掉週五早八，改選週三下午那班">
+ <label>我依據的資訊</label><textarea id="dr" placeholder="例：「剛剛」上 6 人確認點名很嚴、學長說期中很硬"></textarea>
+ <label>當下信心</label><input id="dc" type="range" min="0" max="100" value="60">
+ <button class="primary" onclick="addDecision()">記下這個決定</button></div>
+ ${S.decisions.slice().reverse().map(d=>`<div class="card"><b>${esc(d.text)}</b><div class="meta">${ago(d.at)} · 當下信心 ${d.conf}%</div>
+  <div style="margin:6px 0">${esc(d.reason)}</div>
+  ${d.review?`<div class="meta">回顧：${d.review==='good'?'✅ 資訊可靠，會再這樣選':d.review==='meh'?'🤔 還好，資訊有落差':'😣 後悔了，資訊不可靠'}</div>`:
+  `<div class="row"><span class="meta">回顧：</span><button class="act" onclick="review(${d.id},'good')">✅ 值得</button><button class="act" onclick="review(${d.id},'meh')">🤔 還好</button><button class="act" onclick="review(${d.id},'bad')">😣 後悔</button></div>`}</div>`).join('')||'<div class="empty">還沒有紀錄</div>'}`}
+};
+
+function verdict(q){const hits=S.reports.map(r=>({r,s:score(r,q)})).filter(x=>x.s>=1).sort((a,b)=>b.s*trust(b.r)-a.s*trust(a.r)).slice(0,4);
+ if(!hits.length)return `<div class="card"><div class="verdict">🤷 還沒有人回報過</div><div class="meta">目前沒有相關的新鮮經驗。與其猜，不如直接問在場的人。</div>
+  <div style="margin-top:10px"><button class="primary" onclick="tab='ask';render();setTimeout(()=>{document.getElementById('at').value=V._q},0)">把這個問題丟給在場的人</button></div></div>`;
+ const best=Math.max(...hits.map(h=>trust(h.r))),contra=hits.some(h=>h.r.no>h.r.ok),allStale=hits.every(h=>fresh(h.r)<.25);
+ let v,e,tip;
+ if(allStale){v='資訊可能過期';e='⏳';tip='有人說過，但已經有一段時間了。建議問一下最近剛經歷過的人。'}
+ else if(contra&&best<.6){v='說法有衝突';e='⚠️';tip='同學的回報互相矛盾，先別完全照做，看最新那則或直接發問。'}
+ else if(best>.6){v='大概是對的';e='✅';tip='有新鮮、被多人確認的親身經驗支持，可以放心照這樣做。'}
+ else if(best>.35){v='大致可信，保留一點';e='🟡';tip='方向大概沒錯，但確認的人不多或來源是聽說，關鍵步驟再確認一次。'}
+ else{v='不太確定';e='❓';tip='支持的資訊偏舊或偏弱，建議發問確認。'}
+ return `<div class="card"><div class="meta">判讀結果</div><div class="verdict">${e} ${v}</div>
+  <div class="row"><span class="meta">最強證據可信度</span><div class="bar"><i style="width:${best*100}%;background:${color(best)}"></i></div><span class="meta">${Math.round(best*100)}</span></div>
+  <div style="margin-top:6px">${tip}</div>
+  <div class="row" style="margin-top:10px"><button class="act" onclick="tab='ask';render();setTimeout(()=>{document.getElementById('at').value=V._q},0)">🙋 還是想問在場的人</button>
+  <button class="act" onclick="tab='decide';render();setTimeout(()=>{document.getElementById('dt').value=V._q},0)">📓 記下這個決定</button></div></div>
+  <div class="meta" style="margin:4px 2px 8px">依據這些同學剛剛的經驗：</div>${hits.map(h=>reportCard(h.r)).join('')}`}
+
+function val(id){return document.getElementById(id).value.trim()}
+function addReport(){const text=val('pt');if(!text)return alert('寫一下剛剛發生了什麼');
+ S.reports.push({id:S.nid++,cat:val('pc'),tags:val('pg').split(/\s+/).filter(Boolean),text,src:val('ps'),at:now(),ok:0,no:0});save();tab='feed';filter='all';render()}
+function addAsk(){const text=val('at');if(!text)return;S.asks.push({id:S.nid++,cat:val('ac'),text,at:now(),answers:[]});save();render()}
+function answer(id){const text=val('ans'+id);if(!text)return;const a=S.asks.find(x=>x.id===id),src=val('anss'+id);
+ a.answers.push({text,src,at:now()});
+ S.reports.push({id:S.nid++,cat:a.cat,tags:words(a.text).slice(0,3),text:'（回答「'+a.text+'」）'+text,src,at:now(),ok:0,no:0});save();render()}
+function addDecision(){const text=val('dt');if(!text)return;S.decisions.push({id:S.nid++,text,reason:val('dr'),conf:+val('dc'),at:now()});save();render()}
+function review(id,k){S.decisions.find(d=>d.id===id).review=k;save();render()}
+
+function render(){document.getElementById('view').innerHTML=V[tab]();
+ document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.tab===tab));scrollTo(0,0)}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;render()});
+render();
+</script>
+</body>
+</html>
