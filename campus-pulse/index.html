@@ -37,7 +37,8 @@ nav button.on{color:var(--brand);font-weight:600}
 </style>
 </head>
 <body>
-<header><h1>剛剛 <small>把同學腦中「剛發生的經驗」變成你可以相信的答案</small></h1></header>
+<header><h1>剛剛 <small>把同學腦中「剛發生的經驗」變成你可以相信的答案</small></h1>
+<div class="meta">🏫 淡江大學 · <a href="https://www.dcard.tw/f/tku" target="_blank" rel="noopener" style="color:var(--brand)">Dcard 淡江大學版 ↗</a></div></header>
 <main id="view"></main>
 <nav>
   <button data-tab="check"><b>🧭</b>這樣對嗎？</button>
@@ -59,6 +60,8 @@ const CATS={
   team:{n:'找組員',e:'🤝',half:24*2}
 };
 const SRC={first:{n:'親身經驗',w:1},friend:{n:'朋友說的',w:.7},heard:{n:'聽說/網路',w:.45}};
+const DCARD='https://www.dcard.tw/f/tku';
+const dq=q=>'https://www.dcard.tw/search?forum=tku&query='+encodeURIComponent(q);
 const H=3600e3,now=()=>Date.now();
 const K='campuspulse.v1';
 const load=()=>{try{return JSON.parse(localStorage.getItem(K))}catch(e){return null}};
@@ -94,7 +97,7 @@ function reportCard(r){const t=trust(r),f=fresh(r),c=CATS[r.cat];
   <div class="row"><span>${c.e} <b>${c.n}</b></span><span class="meta">${ago(r.at)} · ${SRC[r.src].n}</span>
   ${f<.25?'<span class="pill" style="background:var(--bad)">可能已過期</span>':''}</div>
   <div style="margin:6px 0">${esc(r.text)}</div>
-  <div class="meta">${r.tags.map(t=>'#'+esc(t)).join(' ')}</div>
+  <div class="meta">${r.tags.map(t=>'#'+esc(t)).join(' ')}${r.url?` · <a href="${esc(r.url)}" target="_blank" rel="noopener" style="color:var(--brand)">Dcard 原文 ↗</a>`:''}</div>
   <div class="row" style="margin-top:8px"><span class="meta">可信度</span><div class="bar"><i style="width:${t*100}%;background:${color(t)}"></i></div><span class="meta">${Math.round(t*100)}</span></div>
   <div class="meta">新鮮度 ${Math.round(f*100)}% · ${r.ok} 人確認 · ${r.no} 人說已變了</div>
   <div class="row" style="margin-top:8px">
@@ -118,13 +121,15 @@ post(){return `<div class="hint">你就是感測器。剛上完課、剛搭完�
  <div class="card"><label>類別</label><select id="pc">${Object.entries(CATS).map(([k,c])=>`<option value="${k}">${c.e} ${c.n}（約 ${c.half<24?c.half+' 小時':Math.round(c.half/24)+' 天'}後變舊）</option>`).join('')}</select>
  <label>剛剛發生了什麼？</label><textarea id="pt" placeholder="具體一點：哪堂課/哪班車/哪棟房、什麼狀況"></textarea>
  <label>標籤（空白分隔）</label><input id="pg" placeholder="統計學 王老師">
+ <label>Dcard 文章連結（選填，引用淡江版的貼文）</label><input id="pu" placeholder="https://www.dcard.tw/f/tku/p/...">
  <label>資訊來源</label><select id="ps">${Object.entries(SRC).map(([k,s])=>`<option value="${k}">${s.n}</option>`).join('')}</select>
  <button class="primary" onclick="addReport()">送出回報</button></div>`},
 ask(){const open=S.asks.slice().sort((a,b)=>b.at-a.at);
  return `<div class="hint">找不到可靠答案？不用想「誰可能知道」再一個個私訊——直接問此刻在場、剛經歷過的人。</div>
  <div class="card"><label>類別</label><select id="ac">${Object.entries(CATS).map(([k,c])=>`<option value="${k}">${c.e} ${c.n}</option>`).join('')}</select>
  <textarea id="at" placeholder="例：有人剛上完週二的會計學嗎？期中範圍到哪？"></textarea>
- <button class="primary" onclick="addAsk()">發問給在場的人</button></div>
+ <button class="primary" onclick="addAsk()">發問給在場的人</button>
+ <div class="row" style="margin-top:8px"><a class="act" style="text-decoration:none" href="${DCARD}" target="_blank" rel="noopener">📝 也到 Dcard 淡江版發文</a><a class="act" style="text-decoration:none" href="#" onclick="this.href=dq(document.getElementById('at').value||'淡江')" target="_blank" rel="noopener">🔎 先搜尋有沒有人問過</a></div></div>
  ${open.map(a=>`<div class="card"><div class="row"><span>${CATS[a.cat].e}</span><b style="flex:1">${esc(a.text)}</b></div>
   <div class="meta">${ago(a.at)} · ${a.answers.length} 個回答</div>
   ${a.answers.map(x=>`<div style="border-left:3px solid var(--brand);padding-left:8px;margin:8px 0">${esc(x.text)}<div class="meta">${ago(x.at)} · ${SRC[x.src].n}</div></div>`).join('')}
@@ -145,7 +150,7 @@ decide(){return `<div class="hint">後悔常來自「當時不知道自己依據
 
 function verdict(q){const hits=S.reports.map(r=>({r,s:score(r,q)})).filter(x=>x.s>=1).sort((a,b)=>b.s*trust(b.r)-a.s*trust(a.r)).slice(0,4);
  if(!hits.length)return `<div class="card"><div class="verdict">🤷 還沒有人回報過</div><div class="meta">目前沒有相關的新鮮經驗。與其猜，不如直接問在場的人。</div>
-  <div style="margin-top:10px"><button class="primary" onclick="tab='ask';render();setTimeout(()=>{document.getElementById('at').value=V._q},0)">把這個問題丟給在場的人</button></div></div>`;
+  <div style="margin-top:10px"><a class="act" style="display:block;text-align:center;margin-bottom:8px;text-decoration:none;padding:8px" href="${dq(q)}" target="_blank" rel="noopener">🔎 到 Dcard 淡江版搜尋看看</a><button class="primary" onclick="tab='ask';render();setTimeout(()=>{document.getElementById('at').value=V._q},0)">把這個問題丟給在場的人</button></div></div>`;
  const best=Math.max(...hits.map(h=>trust(h.r))),contra=hits.some(h=>h.r.no>h.r.ok),allStale=hits.every(h=>fresh(h.r)<.25);
  let v,e,tip;
  if(allStale){v='資訊可能過期';e='⏳';tip='有人說過，但已經有一段時間了。建議問一下最近剛經歷過的人。'}
@@ -157,12 +162,14 @@ function verdict(q){const hits=S.reports.map(r=>({r,s:score(r,q)})).filter(x=>x.
   <div class="row"><span class="meta">最強證據可信度</span><div class="bar"><i style="width:${best*100}%;background:${color(best)}"></i></div><span class="meta">${Math.round(best*100)}</span></div>
   <div style="margin-top:6px">${tip}</div>
   <div class="row" style="margin-top:10px"><button class="act" onclick="tab='ask';render();setTimeout(()=>{document.getElementById('at').value=V._q},0)">🙋 還是想問在場的人</button>
+  <a class="act" style="text-decoration:none" href="${dq(q)}" target="_blank" rel="noopener">🔎 Dcard 淡江版</a>
   <button class="act" onclick="tab='decide';render();setTimeout(()=>{document.getElementById('dt').value=V._q},0)">📓 記下這個決定</button></div></div>
   <div class="meta" style="margin:4px 2px 8px">依據這些同學剛剛的經驗：</div>${hits.map(h=>reportCard(h.r)).join('')}`}
 
 function val(id){return document.getElementById(id).value.trim()}
 function addReport(){const text=val('pt');if(!text)return alert('寫一下剛剛發生了什麼');
- S.reports.push({id:S.nid++,cat:val('pc'),tags:val('pg').split(/\s+/).filter(Boolean),text,src:val('ps'),at:now(),ok:0,no:0});save();tab='feed';filter='all';render()}
+ S.reports.push({id:S.nid++,cat:val('pc'),tags:val('pg').split(/\s+/).filter(Boolean),text,src:val('ps'),url:dcardUrl(val('pu')),at:now(),ok:0,no:0});save();tab='feed';filter='all';render()}
+function dcardUrl(u){return /^https:\/\/(www\.)?dcard\.tw\//.test(u)?u:undefined}
 function addAsk(){const text=val('at');if(!text)return;S.asks.push({id:S.nid++,cat:val('ac'),text,at:now(),answers:[]});save();render()}
 function answer(id){const text=val('ans'+id);if(!text)return;const a=S.asks.find(x=>x.id===id),src=val('anss'+id);
  a.answers.push({text,src,at:now()});
